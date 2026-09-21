@@ -11,24 +11,12 @@ def to_grayscale(image: np.ndarray) -> np.ndarray:
     # note : those weigths are choose because the eyes are not sensitive to every colors equally
     # so we cant simply take (R+G+B)/3
 
-
 def convolve(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     """2D convolution of a grayscale image, with edge padding."""
     kh, kw = kernel.shape
     padded = np.pad(image, ((kh // 2, kh // 2), (kw // 2, kw // 2)), mode="edge")
     windows = np.lib.stride_tricks.sliding_window_view(padded, (kh, kw))
     return np.einsum("ijkl,kl->ij", windows, kernel[::-1, ::-1])
-
-
-def gaussian_kernel(size: int = 5, sigma: float = 1.0) -> np.ndarray:
-    """Normalized 2D gaussian kernel. The size must be odd to have a center."""
-    if size % 2 == 0:
-        raise ValueError(f"kernel size must be odd, got {size}")
-    ax = np.arange(size) - size // 2
-    g = np.exp(-(ax**2) / (2 * sigma**2))
-    kernel = np.outer(g, g)
-    return kernel / kernel.sum()
-
 
 def convolve_channels(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     """Convolve a grayscale image, or each channel of a color image on its own."""
@@ -37,27 +25,88 @@ def convolve_channels(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     channels = [convolve(image[:, :, c], kernel) for c in range(image.shape[2])]
     return np.stack(channels, axis=-1)
 
+def gaussian_kernel(size: int = 5, sigma: float = 1.0) -> np.ndarray:
+    """Normalized 2D gaussian kernel. The size must be odd to have a center.
+    Notation: G
+    """
+    if size % 2 == 0:
+        raise ValueError(f"kernel size must be odd, got {size}")
+    ax = np.arange(size) - size // 2
+    g = np.exp(-(ax**2) / (2 * sigma**2))
+    kernel = np.outer(g, g)
+    return kernel / kernel.sum()
 
-def gaussian_blur(image: np.ndarray, size: int = 11, sigma: float = 1.0) -> np.ndarray:
-    """Gaussian blur. Colors are kept: each channel is blurred on its own."""
+def gaussian_blur(image: np.ndarray, size: int = 5, sigma: float = 1.0) -> np.ndarray:
+    """Gaussian blur. Colors are kept: each channel is blurred on its own.
+    Notation: I*G
+    """
     return convolve_channels(image, gaussian_kernel(size, sigma))
 
-
 # Sobel operators
-SOBEL_X = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float64) / 8
-SOBEL_Y = SOBEL_X.T
-
+D_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float64) / 8
+D_y = D_x.T
 
 def x_derivative(image: np.ndarray) -> np.ndarray:
-    """Horizontal derivative gx: it reacts to vertical edges. Values are signed."""
-    return convolve_channels(image, SOBEL_X)
+    """Horizontal derivative gx: it reacts to vertical edges. Values are signed.
+    Notation: I * D_x"""
+    return convolve_channels(image, D_x)
 
 def y_derivative(image: np.ndarray) -> np.ndarray:
-    """Vertical derivative gy: it reacts to horizontal edges. Values are signed."""
-    return convolve_channels(image, SOBEL_Y)
+    """Vertical derivative gy: it reacts to horizontal edges. Values are signed.
+    Notation: I*D_y"""
+    return convolve_channels(image, D_y)
 
-def sobel(image: np.ndarray) -> np.ndarray:
-    """Gradient magnitude using Sobel operators, normalized to [0, 1]."""
+def derivative_of_gaussian_kernels(size: int = 9, sigma: float = 1.4) -> tuple[np.ndarray, np.ndarray]:
+    """D_x and D_y convolved with a gaussian, as a pair."""
+    smoothing = gaussian_kernel(size, sigma)
+    pad = size // 2
+    return convolve(np.pad(D_x, pad), smoothing), convolve(np.pad(D_y, pad), smoothing)
+
+def derivative_of_gaussian(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """I_x and I_y of the image, as a pair.
+    Notation: I_x = D_x * (G * I) = (D_x * G) * I"""
     gray = to_grayscale(image)
-    magnitude = np.hypot(x_derivative(gray), y_derivative(gray))
-    return magnitude / magnitude.max() if magnitude.max() > 0 else magnitude
+    dog_x, dog_y = derivative_of_gaussian_kernels(9, 1.4)
+    return convolve(gray, dog_x), convolve(gray, dog_y)
+
+def gradient_magnitude(image: np.ndarray) -> np.ndarray:
+    """Gradient magnitude of a smoothed image, normalized to [0, 1]."""
+    I_x, I_y = derivative_of_gaussian(image)
+
+    magnitude = np.hypot(I_x, I_y)
+    peak = magnitude.max()
+    return magnitude / peak if peak > 1e-12 else np.zeros_like(magnitude)
+
+def non_max_suppression(magnitude: np.ndarray, I_x: np.ndarray, I_y: np.ndarray) -> np.ndarray:
+    """check is a pixel is the max of his neighboors in the grad direction"""
+
+    theta = np.arctan2(I_y, I_x)
+    theta_positive = theta % (2 * np.pi)
+    angle = np.pi / 4
+    angle_index = np.round(theta_positive / angle).astype(int) % 4
+
+    keep = np.zeros(magnitude.shape, dtype=bool)
+
+    # windows is a list of all possible 3x3 windows
+    # w[0,0] being the 3x3 window centered on pixel 0,0 (with padding)
+    padded = np.pad(magnitude, 1, mode="constant", constant_values=np.inf)
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (3, 3))
+
+    # which neighbours to visit for each angle indexes
+    NEIGHBOURS = {
+        0: (0, 1), 
+        1: (1, 1), 
+        2: (1, 0), 
+        3: (1, -1)
+    }
+
+    # instead of exploring the 4 angle state on every pixel,
+    # we compare every pixel for every state
+    for case, (dr, dc) in NEIGHBOURS.items():
+        # this is the image translated by (dr, dc)
+        pos_neighbours  = windows[..., 1 + dr, 1 + dc]   # neighbour along the gradient
+        neg_neighbours = windows[..., 1 - dr, 1 - dc]    # and the opposite one
+
+        keep |= (angle_index == case) & (magnitude >= neg_neighbours) & (magnitude > pos_neighbours)
+
+    return magnitude * keep

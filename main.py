@@ -3,13 +3,21 @@
 import argparse
 from pathlib import Path
 
-from core.filters import gaussian_blur, sobel, to_grayscale, x_derivative, y_derivative
+from core.filters import (
+    gaussian_blur,
+    gradient_magnitude,
+    to_grayscale,
+    x_derivative,
+    y_derivative,
+)
+from core.edge_detection import edge_detection
 from core.image_io import load_image, save_image, to_display
 
 ALGORITHMS = {
     "grayscale": to_grayscale,
     "blur": gaussian_blur,
-    "sobel": sobel,
+    "gradient_magnitude": gradient_magnitude,
+    "edge_detection": edge_detection,
     "dx": lambda image: to_display(x_derivative(image)),
     "dy": lambda image: to_display(y_derivative(image)),
 }

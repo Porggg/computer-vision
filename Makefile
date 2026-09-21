@@ -2,7 +2,7 @@ VENV   := .venv
 PY     ?= python3.13
 PYTHON := $(VENV)/bin/python
 IMAGE  ?= input/pinhole.jpeg
-ALGO   ?= blur	
+ALGO   ?= thin_edges	
 
 .PHONY: all install run test clean fclean
 

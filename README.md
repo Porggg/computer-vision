@@ -11,11 +11,9 @@ make install          # creates .venv (Python 3.13, `brew install python@3.13`) 
 ## Usage
 
 ```sh
-make run                                   # grayscale on input/sample.png
-make run ALGO=sobel IMAGE=input/photo.jpg  # algos: grayscale, blur, sobel
-make test                                  # run the tests
-make clean                                 # remove output/ results and caches
-make fclean                                # clean + remove .venv
+make run ALGO=edge_detection IMAGE=input/photo.jpg
+make test                                  
+make clean                                                            
 ```
 
 ## Layout
