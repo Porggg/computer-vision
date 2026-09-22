@@ -1,12 +1,15 @@
 # Computer Vision
 
-Hand-written computer vision algorithms with numpy.
+This project implements some computer vision algorithms 
 
-## Setup
+## Algorithms
 
-```sh
-make install          # creates .venv (Python 3.13, `brew install python@3.13`) and installs requirements
-```
+- **[core/edge_detection.py](core/edge_detection.py)**
+
+![Edge detection pipeline](doc/edge_detection_pipeline.png)  
+
+Note : the blur (step 1) and gaussian magnitude (step 2) are actually made together using DoG (Derivative of Gaussian)
+
 
 ## Usage
 

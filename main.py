@@ -5,12 +5,11 @@ from pathlib import Path
 
 from core.filters import (
     gaussian_blur,
-    gradient_magnitude,
     to_grayscale,
     x_derivative,
     y_derivative,
 )
-from core.edge_detection import edge_detection
+from core.edge_detection import edge_detection, gradient_magnitude
 from core.image_io import load_image, save_image, to_display
 
 ALGORITHMS = {
