@@ -1,10 +1,15 @@
 VENV   := .venv
 PY     ?= python3.13
 PYTHON := $(VENV)/bin/python
-IMAGE  ?= input/pinhole.jpeg
-ALGO   ?= thin_edges	
+IMAGE  ?= input/mandrill.jpeg
+ALGO   ?= harris_heatmap
+K      ?= 0.04
 
-.PHONY: all install run test clean fclean
+EDGE_IMAGE   ?= input/mandrill.jpeg
+EDGE_ALGOS   := dx dy gradient_magnitude edge_detection
+HARRIS_IMAGE ?= input/hlm.jpeg
+
+.PHONY: all install run run-edge run-harris test clean fclean
 
 all: install
 
@@ -16,7 +21,15 @@ install: $(VENV)
 	$(PYTHON) -m pip install -r requirements.txt
 
 run:
-	$(PYTHON) main.py $(IMAGE) --algo $(ALGO)
+	$(PYTHON) main.py $(IMAGE) --algo $(ALGO) -k $(K)
+
+run-edge:
+	@for algo in $(EDGE_ALGOS); do \
+		$(PYTHON) main.py $(EDGE_IMAGE) --algo $$algo || exit 1; \
+	done
+
+run-harris:
+	$(PYTHON) main.py $(HARRIS_IMAGE) --algo harris_heatmap -k $(K)
 
 test:
 	$(PYTHON) -m pytest -v

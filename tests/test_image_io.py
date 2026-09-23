@@ -46,8 +46,42 @@ def test_to_display_centers_zero_on_mid_gray():
     displayed = to_display(np.array([[-1.0, 0.0, 1.0]]))
     assert np.array_equal(displayed, [[0.0, 0.5, 1.0]])
 
+def test_to_heatmap_puts_gray_at_zero():
+    from core.image_io import to_heatmap
 
-def test_to_display_of_a_flat_image_is_mid_gray():
-    from core.image_io import to_display
+    mid = to_heatmap(np.zeros((2, 2)))
+    assert np.allclose(mid, np.array([0xF0, 0xEF, 0xEC]) / 255.0, atol=1e-6)
+    assert mid.shape == (2, 2, 3)  # one channel in, three out
 
-    assert np.allclose(to_display(np.zeros((3, 3))), 0.5)
+
+def test_to_heatmap_clips_outside_the_range():
+    from core.image_io import to_heatmap
+
+    assert np.allclose(to_heatmap(np.array([[-5.0]])), to_heatmap(np.array([[-1.0]])))
+    assert np.allclose(to_heatmap(np.array([[5.0]])), to_heatmap(np.array([[1.0]])))
+
+
+def test_to_heatmap_poles_are_blue_below_and_red_above():
+    from core.image_io import to_heatmap
+
+    ramp = to_heatmap(np.array([[-1.0, 1.0]]))
+    blue, red = ramp[0, 0], ramp[0, 1]
+    assert blue[2] > blue[0]  # more blue than red
+    assert red[0] > red[2]  # more red than blue
+
+
+def test_to_heatmap_is_symmetric_around_zero():
+    from core.image_io import to_heatmap
+
+    # a value as far below 0 as another is above gets the same intensity
+    below, above = to_heatmap(np.array([[-0.6]]))[0, 0], to_heatmap(np.array([[0.6]]))[0, 0]
+    assert np.isclose(np.abs(below - below.mean()).sum(), np.abs(above - above.mean()).sum(), rtol=0.3)
+
+
+def test_to_heatmap_respects_the_image_contract():
+    from core.image_io import to_heatmap
+
+    out = to_heatmap(np.random.default_rng(0).random((6, 7)) * 2 - 1)
+    assert out.shape == (6, 7, 3)
+    assert out.dtype == np.float64
+    assert out.min() >= 0.0 and out.max() <= 1.0
