@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      # PY=python because setup-python puts the chosen version on the path as
+      # "python", while the Makefile defaults to a "python3.13" binary
+      - name: Install
+        run: make install PY=python
+
+      - name: Test
+        run: make test
