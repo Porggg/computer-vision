@@ -8,10 +8,6 @@ School project: classic computer vision algorithms implemented by hand with
 numpy. **Do not reach for OpenCV, scipy.ndimage or skimage** — the point is the
 implementation itself. Only numpy and pillow are dependencies.
 
-The one exception is `ground-truth/`, which compares an implementation against
-OpenCV as a check. It is gitignored, absent from `requirements.txt`, and nothing
-under `core/` may import it.
-
 ## Working style
 
 Answer questions with explanations; do not implement the algorithm on the
