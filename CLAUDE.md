@@ -23,7 +23,7 @@ user's behalf unless asked explicitly. The user writes the maths.
 make install                    # create .venv (needs python3.13) + install requirements
 make test                       # pytest
 make run ALGO=edge_detection IMAGE=input/mandrill.jpeg
-make run ALGO=harris_heatmap K=0.04
+make run ALGO=harris_corner_detection K=0.04
 make run-edge                   # dx, dy, gradient_magnitude, edge_detection on one image
 make run-harris                 # harris_heatmap on input/hlm.jpeg
 make clean                      # wipe output/ and caches

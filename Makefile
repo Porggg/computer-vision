@@ -1,8 +1,8 @@
 VENV   := .venv
 PY     ?= python3.13
 PYTHON := $(VENV)/bin/python
-IMAGE  ?= input/mandrill.jpeg
-ALGO   ?= harris_heatmap
+IMAGE  ?= input/hlm.jpeg
+ALGO   ?= harris_corner_detection
 K      ?= 0.04
 
 EDGE_IMAGE   ?= input/mandrill.jpeg
@@ -29,7 +29,7 @@ run-edge:
 	done
 
 run-harris:
-	$(PYTHON) main.py $(HARRIS_IMAGE) --algo harris_heatmap -k $(K)
+	$(PYTHON) main.py $(HARRIS_IMAGE) --algo harris_corner_detection -k $(K)
 
 test:
 	$(PYTHON) -m pytest -v

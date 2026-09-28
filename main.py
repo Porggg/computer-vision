@@ -12,7 +12,7 @@ from core.filters import (
     y_derivative,
 )
 from core.edge_detection import edge_detection
-from core.harris_corner_detection import harris_corner_detection_heatmap
+from core.harris_corner_detection import harris_corner_detection_heatmap, haaris_corner_detection
 from core.image_io import load_image, save_image
 
 ALGORITHMS = {
@@ -20,7 +20,7 @@ ALGORITHMS = {
     "blur": gaussian_blur,
     "gradient_magnitude": lambda image: gradient_magnitude(image)[0],
     "edge_detection": edge_detection,
-    "harris_heatmap": harris_corner_detection_heatmap,
+    "harris_corner_detection": haaris_corner_detection,
     "dx": x_derivative,
     "dy": y_derivative,
 }
