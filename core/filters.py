@@ -106,9 +106,10 @@ def derivative_of_gaussian(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     dog_x, dog_y = derivative_of_gaussian_kernels(9, 1.4)
     return convolve(gray, dog_x), convolve(gray, dog_y)
 
-def threshold(image: np.ndarray, level: float) -> np.ndarray:
-    """Keep the values strictly above level, set the rest to 0."""
-    return np.where(image > level, image, 0.0)
+def threshold(image: np.ndarray, level: float, mask: bool = False) -> np.ndarray:
+    """Keep the values strictly above level, set the rest to 0.
+       if mask is True : set the pixel to max intensity"""
+    return np.where(image > level, 1.0 if mask else image, 0.0)
 
 def non_max_suppression(magnitude: np.ndarray, I_x: np.ndarray, I_y: np.ndarray) -> np.ndarray:
     """check is a pixel is the max of his neighboors in the grad direction"""

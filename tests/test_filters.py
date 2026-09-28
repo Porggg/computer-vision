@@ -160,7 +160,7 @@ def test_y_derivative_reacts_to_horizontal_edges_only():
 
 
 def test_derivative_sign_follows_the_edge_direction():
-    # convolve flips the kernel, so SOBEL_X measures left minus right:
+    # convolve flips the kernel, so D_x measures left minus right:
     # a dark-to-bright edge is negative, and mirroring it flips the sign.
     image = np.zeros((8, 8))
     image[:, 4:] = 1  # dark on the left, bright on the right
@@ -269,6 +269,26 @@ def test_threshold_does_not_modify_its_input():
 def test_threshold_keeps_the_shape_and_the_dtype():
     image = np.random.default_rng(0).random((5, 7))
     result = threshold(image, 0.5)
+    assert result.shape == (5, 7)
+    assert result.dtype == np.float64
+
+
+def test_threshold_mask_sets_the_survivors_to_one():
+    image = np.array([[0.1, 0.4, 0.6, 0.9]])
+    assert np.array_equal(threshold(image, 0.5, mask=True), [[0.0, 0.0, 1.0, 1.0]])
+
+
+def test_threshold_mask_selects_the_same_pixels():
+    # mask only changes the value written, never which pixels are kept
+    image = np.random.default_rng(0).random((16, 16))
+    kept = threshold(image, 0.5) != 0
+    masked = threshold(image, 0.5, mask=True)
+    assert np.array_equal(masked != 0, kept)
+    assert set(np.unique(masked)) <= {0.0, 1.0}
+
+
+def test_threshold_mask_keeps_the_shape_and_the_dtype():
+    result = threshold(np.random.default_rng(0).random((5, 7)), 0.5, mask=True)
     assert result.shape == (5, 7)
     assert result.dtype == np.float64
 
