@@ -111,7 +111,7 @@ def threshold(image: np.ndarray, level: float, mask: bool = False) -> np.ndarray
        if mask is True : set the pixel to max intensity"""
     return np.where(image > level, 1.0 if mask else image, 0.0)
 
-def non_max_suppression(magnitude: np.ndarray, I_x: np.ndarray, I_y: np.ndarray) -> np.ndarray:
+def non_max_suppression_line(magnitude: np.ndarray, I_x: np.ndarray, I_y: np.ndarray) -> np.ndarray:
     """check is a pixel is the max of his neighboors in the grad direction"""
 
     theta = np.arctan2(I_y, I_x)
@@ -144,3 +144,12 @@ def non_max_suppression(magnitude: np.ndarray, I_x: np.ndarray, I_y: np.ndarray)
         keep |= (angle_index == case) & (magnitude >= neg_neighbours) & (magnitude > pos_neighbours)
 
     return magnitude * keep
+
+def non_max_suppression_neighborhood(image):
+    padded = np.pad(image, 1, mode="constant", constant_values=-np.inf)
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (3, 3))
+
+    local_max = windows.max(axis=(-2,-1))
+    keep = local_max == image
+
+    return keep * image

@@ -6,7 +6,7 @@ from core.filters import (
     convolve,
     derivative_of_gaussian,
     gradient_magnitude,
-    non_max_suppression,
+    non_max_suppression_line,
     derivative_of_gaussian_kernels,
     to_grayscale,
 )
@@ -15,7 +15,7 @@ from core.filters import (
 def test_edge_detection_is_the_magnitude_then_the_suppression():
     image = np.random.default_rng(0).random((32, 32))
     magnitude, I_x, I_y = gradient_magnitude(image)
-    expected = non_max_suppression(magnitude, I_x, I_y)
+    expected = non_max_suppression_line(magnitude, I_x, I_y)
     assert np.allclose(edge_detection(image), expected)
 
 

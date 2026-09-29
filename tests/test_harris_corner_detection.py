@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from core.filters import threshold
+from core.filters import non_max_suppression_neighborhood, threshold
 from core.harris_corner_detection import harris_corner_detection_heatmap, haaris_corner_detection
 
 
@@ -75,10 +75,28 @@ def test_harris_response_accepts_color_and_returns_one_channel():
 
 # --- haaris_corner_detection ------------------------------------------------
 
-def test_harris_detection_is_the_response_thresholded_at_0_6():
+def test_harris_detection_is_the_thresholded_response_then_the_suppression():
     image = np.random.default_rng(0).random((32, 32))
-    expected = threshold(harris_corner_detection_heatmap(image), 0.6)
+    expected = non_max_suppression_neighborhood(threshold(harris_corner_detection_heatmap(image), 0.6))
     assert np.allclose(haaris_corner_detection(image), expected)
+
+
+def test_harris_detection_keeps_fewer_pixels_than_the_threshold_alone():
+    image = _square()
+    thresholded = threshold(harris_corner_detection_heatmap(image), 0.6)
+    assert np.count_nonzero(haaris_corner_detection(image)) < np.count_nonzero(thresholded)
+
+
+def test_harris_detection_survivors_are_local_maxima():
+    corners = haaris_corner_detection(np.random.default_rng(0).random((32, 32)))
+    assert np.array_equal(non_max_suppression_neighborhood(corners), corners)
+
+
+def test_harris_detection_survivors_sit_on_the_corners():
+    rows, cols = np.nonzero(haaris_corner_detection(_square()))
+    for r, c in zip(rows, cols):
+        distance = min(max(abs(r - cr), abs(c - cc)) for cr, cc in CORNERS)
+        assert distance <= 4
 
 
 def test_harris_detection_is_either_zero_or_above_0_6():
@@ -89,9 +107,11 @@ def test_harris_detection_is_either_zero_or_above_0_6():
 
 
 def test_harris_detection_keeps_the_corners_only():
+    # a wider window than for the response: the suppression keeps only the peak,
+    # which is not necessarily on the pixel next to the corner
     corners = haaris_corner_detection(_square())
     for r, c in CORNERS:
-        assert corners[r - 2:r + 2, c - 2:c + 2].max() > 0.6
+        assert corners[r - 3:r + 4, c - 3:c + 4].max() > 0.6
     for r, c in MID_EDGES + FLAT:
         assert corners[r, c] == 0.0
 

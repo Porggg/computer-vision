@@ -13,7 +13,8 @@ from core.filters import (
     derivative_of_gaussian_kernels,
     gaussian_kernel,
     gradient_magnitude,
-    non_max_suppression,
+    non_max_suppression_line,
+    non_max_suppression_neighborhood,
     x_derivative,
     y_derivative,
     threshold,
@@ -374,12 +375,12 @@ def test_gradient_magnitude_collapses_color_to_one_channel():
     assert gradient_magnitude(np.zeros((8, 9, 3)))[0].shape == (8, 9)
 
 
-# --- non_max_suppression ----------------------------------------------------
+# --- non_max_suppression_line ----------------------------------------------------
 
 def _suppressed(image):
-    """non_max_suppression on its own inputs, without going through the pipeline."""
+    """non_max_suppression_line on its own inputs, without going through the pipeline."""
     magnitude, I_x, I_y = gradient_magnitude(image)
-    return non_max_suppression(magnitude, I_x, I_y)
+    return non_max_suppression_line(magnitude, I_x, I_y)
 
 
 def _edge_image(vertical=True, size=24):
@@ -435,8 +436,8 @@ def test_nms_is_idempotent():
     # never beat a neighbour with the strict >
     image = np.random.default_rng(0).random((32, 32))
     magnitude, I_x, I_y = gradient_magnitude(image)
-    once = non_max_suppression(magnitude, I_x, I_y)
-    twice = non_max_suppression(once, I_x, I_y)
+    once = non_max_suppression_line(magnitude, I_x, I_y)
+    twice = non_max_suppression_line(once, I_x, I_y)
     assert np.allclose(once, twice)
 
 
@@ -445,7 +446,7 @@ def test_nms_suppresses_a_border_pixel_pointing_outside():
     image = _edge_image()
     magnitude = gradient_magnitude(image)[0]
     I_x, I_y = derivative_of_gaussian(image)
-    thinned = non_max_suppression(magnitude, I_x, I_y)
+    thinned = non_max_suppression_line(magnitude, I_x, I_y)
     horizontal = np.abs(I_y) < np.abs(I_x)      # gradient points left or right
     assert np.all(thinned[:, 0][horizontal[:, 0]] == 0.0)
     assert np.all(thinned[:, -1][horizontal[:, -1]] == 0.0)
@@ -455,3 +456,95 @@ def test_nms_keeps_the_shape_and_the_contract():
     thinned = _suppressed(np.random.default_rng(0).random((17, 23)))
     assert thinned.shape == (17, 23)
     assert thinned.min() >= 0.0 and thinned.max() <= 1.0
+
+
+# --- non_max_suppression_neighborhood ---------------------------------------
+
+def _is_local_max_brute_force(image):
+    """The same question asked one pixel at a time, with plain loops."""
+    h, w = image.shape
+    keep = np.zeros((h, w), dtype=bool)
+    for i in range(h):
+        for j in range(w):
+            window = image[max(i - 1, 0):i + 2, max(j - 1, 0):j + 2]
+            keep[i, j] = image[i, j] == window.max()
+    return keep
+
+
+def test_nms_neighborhood_matches_a_brute_force_loop():
+    image = np.random.default_rng(0).random((20, 25))
+    expected = image * _is_local_max_brute_force(image)
+    assert np.allclose(non_max_suppression_neighborhood(image), expected)
+
+
+def test_nms_neighborhood_keeps_a_peak_and_drops_its_neighbours():
+    image = np.zeros((5, 5))
+    image[1:4, 1:4] = 0.5
+    image[2, 2] = 1.0
+    result = non_max_suppression_neighborhood(image)
+    assert result[2, 2] == 1.0
+    assert np.count_nonzero(result) == 1
+
+
+def test_nms_neighborhood_keeps_two_peaks_that_do_not_touch():
+    image = np.zeros((5, 9))
+    image[2, 2] = 0.8
+    image[2, 6] = 0.3  # smaller, but not in the 3x3 of the other one
+    result = non_max_suppression_neighborhood(image)
+    assert result[2, 2] == 0.8 and result[2, 6] == 0.3
+
+
+def test_nms_neighborhood_compares_the_diagonals_too():
+    # unlike the line version, every one of the 8 neighbours counts
+    image = np.zeros((3, 3))
+    image[1, 1] = 0.5
+    image[0, 2] = 0.9
+    assert non_max_suppression_neighborhood(image)[1, 1] == 0.0
+
+
+def test_nms_neighborhood_keeps_every_pixel_of_a_plateau():
+    # the test is ==, so two equal neighbours are both a maximum
+    image = np.array([[0.0, 1.0, 1.0, 0.0]])
+    assert np.array_equal(non_max_suppression_neighborhood(image), image)
+
+
+def test_nms_neighborhood_can_keep_a_border_pixel():
+    # the -inf padding never beats a real pixel, unlike the +inf of the line version
+    image = np.random.default_rng(0).random((6, 6)) * 0.5
+    image[0, 0] = 1.0
+    assert non_max_suppression_neighborhood(image)[0, 0] == 1.0
+
+
+def test_nms_neighborhood_keeps_a_negative_local_maximum():
+    # it does not look at the sign: a harris edge surrounded by stronger edges
+    # survives, which is why haaris_corner_detection thresholds first
+    image = np.array([[-0.8, -0.2, -0.8]])
+    assert non_max_suppression_neighborhood(image)[0, 1] == -0.2
+
+
+def test_nms_neighborhood_only_keeps_or_zeroes_never_changes_a_value():
+    image = np.random.default_rng(0).random((32, 32))
+    result = non_max_suppression_neighborhood(image)
+    survivors = result != 0
+    assert np.array_equal(result[survivors], image[survivors])
+    assert 0 < np.count_nonzero(result) < image.size
+
+
+def test_nms_neighborhood_is_idempotent():
+    # on a non negative image a survivor is left among zeros, so it wins again
+    image = np.random.default_rng(0).random((32, 32))
+    once = non_max_suppression_neighborhood(image)
+    assert np.array_equal(non_max_suppression_neighborhood(once), once)
+
+
+def test_nms_neighborhood_does_not_modify_its_input():
+    image = np.random.default_rng(0).random((8, 8))
+    before = image.copy()
+    non_max_suppression_neighborhood(image)
+    assert np.array_equal(image, before)
+
+
+def test_nms_neighborhood_keeps_the_shape_and_the_dtype():
+    result = non_max_suppression_neighborhood(np.random.default_rng(0).random((17, 23)))
+    assert result.shape == (17, 23)
+    assert result.dtype == np.float64
