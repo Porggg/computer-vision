@@ -12,7 +12,7 @@ Note : the blur (step 1) and gaussian magnitude (step 2) are actually made toget
 
 - **[core/harris_corner_detection.py](core/harris_corner_detection.py)**
 
-![Haaris corner detection pipeline](doc/edge_detection_pipeline.png)  
+![Harris corner detection pipeline](doc/harris_corner_detection_pipeline.png)  
 
 ## Usage
 
