@@ -10,6 +10,9 @@ This project implements some computer vision algorithms
 
 Note : the blur (step 1) and gaussian magnitude (step 2) are actually made together using DoG (Derivative of Gaussian)
 
+- **[core/harris_corner_detection.py](core/harris_corner_detection.py)**
+
+![Haaris corner detection pipeline](doc/edge_detection_pipeline.png)  
 
 ## Usage
 
