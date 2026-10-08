@@ -20,6 +20,11 @@ def convolve_channels(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     channels = [convolve(image[:, :, c], kernel) for c in range(image.shape[2])]
     return np.stack(channels, axis=-1)
 
+### OPERATIONS
+
+def downsample(image: np.ndarray):
+    return image[::2, ::2]
+
 ### KERNELS 
 
 def gaussian_kernel(size: int = 5, sigma: float = 1.0) -> np.ndarray:
@@ -153,3 +158,12 @@ def non_max_suppression_neighborhood(image):
     keep = local_max == image
 
     return keep * image
+
+def non_max_suppression_neighborhood_3d(volume, padding=-np.inf):
+    padded = np.pad(volume, 1, mode="constant", constant_values=padding)
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (3, 3, 3))
+
+    local_max = windows.max(axis=(-3, -2,-1))
+    keep = local_max == volume
+
+    return keep * volume

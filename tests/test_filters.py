@@ -15,6 +15,7 @@ from core.filters import (
     gradient_magnitude,
     non_max_suppression_line,
     non_max_suppression_neighborhood,
+    non_max_suppression_neighborhood_3d,
     x_derivative,
     y_derivative,
     threshold,
@@ -547,4 +548,111 @@ def test_nms_neighborhood_does_not_modify_its_input():
 def test_nms_neighborhood_keeps_the_shape_and_the_dtype():
     result = non_max_suppression_neighborhood(np.random.default_rng(0).random((17, 23)))
     assert result.shape == (17, 23)
+    assert result.dtype == np.float64
+
+
+# --- non_max_suppression_neighborhood_3d ------------------------------------
+
+def _is_local_max_3d_brute_force(volume):
+    """The same question asked one voxel at a time, with plain loops."""
+    d, h, w = volume.shape
+    keep = np.zeros((d, h, w), dtype=bool)
+    for s in range(d):
+        for i in range(h):
+            for j in range(w):
+                window = volume[max(s - 1, 0):s + 2, max(i - 1, 0):i + 2, max(j - 1, 0):j + 2]
+                keep[s, i, j] = volume[s, i, j] == window.max()
+    return keep
+
+
+def test_nms_3d_matches_a_brute_force_loop():
+    volume = np.random.default_rng(0).random((5, 12, 15))
+    expected = volume * _is_local_max_3d_brute_force(volume)
+    assert np.allclose(non_max_suppression_neighborhood_3d(volume), expected)
+
+
+def test_nms_3d_keeps_a_peak_and_drops_its_neighbours():
+    volume = np.zeros((4, 7, 7))
+    volume[1:4, 2:5, 2:5] = 0.5
+    volume[2, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[2, 3, 3] == 1.0
+    assert np.count_nonzero(result) == 1
+
+
+def test_nms_3d_compares_the_neighbouring_scales():
+    # same pixel, one level apart: only the stronger scale survives
+    volume = np.zeros((4, 7, 7))
+    volume[1, 3, 3] = 0.8
+    volume[2, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[1, 3, 3] == 0.0 and result[2, 3, 3] == 1.0
+
+
+def test_nms_3d_compares_the_diagonals_across_scales_too():
+    # every one of the 26 neighbours counts, corners of the 3x3x3 cube included
+    volume = np.zeros((4, 7, 7))
+    volume[1, 2, 2] = 0.9
+    volume[2, 3, 3] = 1.0
+    assert non_max_suppression_neighborhood_3d(volume)[1, 2, 2] == 0.0
+
+
+def test_nms_3d_keeps_two_peaks_that_do_not_touch():
+    volume = np.zeros((4, 7, 7))
+    volume[1, 1, 1] = 0.9  # two pixels away from the other one
+    volume[2, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[1, 1, 1] == 0.9 and result[2, 3, 3] == 1.0
+
+
+def test_nms_3d_keeps_every_voxel_of_a_plateau():
+    # the test is ==, so two equal neighbours are both a maximum
+    volume = np.zeros((3, 3, 4))
+    volume[1, 1, 1:3] = 1.0
+    assert np.array_equal(non_max_suppression_neighborhood_3d(volume), volume)
+
+
+def test_nms_3d_can_keep_the_first_and_last_scales():
+    # the -inf padding never beats a real voxel, so the outer levels can win:
+    # blob_detection has to drop them, they have no neighbour on one side
+    volume = np.zeros((4, 7, 7))
+    volume[0, 3, 3] = 1.0
+    volume[3, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[0, 3, 3] == 1.0 and result[3, 3, 3] == 1.0
+
+
+def test_nms_3d_ignores_minima():
+    # it only looks for maxima: a bright blob is a minimum of the DoG
+    volume = np.zeros((4, 7, 7))
+    volume[2, 3, 3] = -1.0
+    assert np.count_nonzero(non_max_suppression_neighborhood_3d(volume)) == 0
+
+
+def test_nms_3d_finds_a_bright_disc_on_the_negated_dog():
+    image = np.zeros((64, 64))
+    yy, xx = np.mgrid[:64, :64]
+    image[(yy - 32) ** 2 + (xx - 32) ** 2 <= 6**2] = 1.0
+    sigmas = [1.6 * np.sqrt(2) ** i for i in range(6)]
+    gaussians = np.stack([gaussian_blur(image, int(2 * np.ceil(3 * s) + 1), s) for s in sigmas])
+    dogs = gaussians[1:] - gaussians[:-1]
+
+    inner = non_max_suppression_neighborhood_3d(-dogs)[1:-1]
+    peaks = np.argwhere(inner > 0.01)
+
+    assert np.count_nonzero(non_max_suppression_neighborhood_3d(dogs)[1:-1] > 0.01) == 0
+    assert len(peaks) == 1
+    assert tuple(peaks[0][1:]) == (32, 32)
+
+
+def test_nms_3d_does_not_modify_its_input():
+    volume = np.random.default_rng(0).random((4, 8, 8))
+    before = volume.copy()
+    non_max_suppression_neighborhood_3d(volume)
+    assert np.array_equal(volume, before)
+
+
+def test_nms_3d_keeps_the_shape_and_the_dtype():
+    result = non_max_suppression_neighborhood_3d(np.random.default_rng(0).random((4, 17, 23)))
+    assert result.shape == (4, 17, 23)
     assert result.dtype == np.float64

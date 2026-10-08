@@ -6,6 +6,5 @@ output/*
 .pytest_cache/
 .DS_Store
 ground-truth
-input/toy.png
 input/sample.png
 input/pinhole.jpeg
