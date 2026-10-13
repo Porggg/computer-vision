@@ -11,6 +11,7 @@ from core.filters import (
     x_derivative,
     y_derivative,
 )
+from core.blob_detection import blob_overlay
 from core.edge_detection import edge_detection
 from core.harris_corner_detection import harris_corner_detection_heatmap, harris_corner_overlay
 from core.image_io import load_image, save_image
@@ -21,6 +22,7 @@ ALGORITHMS = {
     "gradient_magnitude": lambda image: gradient_magnitude(image)[0],
     "edge_detection": edge_detection,
     "harris_corner_detection": harris_corner_overlay,
+    "blob_detection": blob_overlay,
     "dx": x_derivative,
     "dy": y_derivative,
 }

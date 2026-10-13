@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from core.image_io import load_image, save_image
 
@@ -85,3 +86,66 @@ def test_to_heatmap_respects_the_image_contract():
     assert out.shape == (6, 7, 3)
     assert out.dtype == np.float64
     assert out.min() >= 0.0 and out.max() <= 1.0
+
+
+def test_draw_circles_draws_a_ring_at_the_radius():
+    from core.image_io import draw_circles
+
+    out = draw_circles(np.zeros((21, 21)), np.array([[10.0, 10.0, 5.0]]))
+    red = np.all(out == [1.0, 0.0, 0.0], axis=-1)
+    yy, xx = np.nonzero(red)
+    assert red.any()
+    assert np.allclose(np.hypot(yy - 10, xx - 10), 5.0, atol=0.5)
+
+
+def test_draw_circles_leaves_the_inside_and_the_outside_untouched():
+    from core.image_io import draw_circles
+
+    out = draw_circles(np.full((21, 21), 0.3), np.array([[10.0, 10.0, 5.0]]))
+    assert np.all(out[10, 10] == 0.3)  # center
+    assert np.all(out[0, 0] == 0.3)  # far corner
+
+
+def test_draw_circles_uses_x_as_the_column_and_y_as_the_row():
+    from core.image_io import draw_circles
+
+    out = draw_circles(np.zeros((30, 30)), np.array([[20.0, 5.0, 2.0]]))
+    red = np.all(out == [1.0, 0.0, 0.0], axis=-1)
+    rows, cols = np.nonzero(red)
+    assert rows.mean() == pytest.approx(5.0, abs=0.5)
+    assert cols.mean() == pytest.approx(20.0, abs=0.5)
+
+
+def test_draw_circles_clips_a_circle_that_leaves_the_image():
+    from core.image_io import draw_circles
+
+    out = draw_circles(np.zeros((10, 10)), np.array([[0.0, 0.0, 4.0], [9.0, 9.0, 30.0]]))
+    assert out.shape == (10, 10, 3)
+    assert np.all(out[4, 0] == [1.0, 0.0, 0.0])
+
+
+def test_draw_circles_without_circles_only_converts_to_rgb():
+    from core.image_io import draw_circles
+
+    image = np.random.default_rng(0).random((6, 7))
+    out = draw_circles(image, np.empty((0, 3)))
+    assert out.shape == (6, 7, 3)
+    assert np.array_equal(out[..., 0], image) and np.array_equal(out[..., 2], image)
+
+
+def test_draw_circles_does_not_modify_its_input():
+    from core.image_io import draw_circles
+
+    image = np.random.default_rng(0).random((12, 12, 3))
+    before = image.copy()
+    draw_circles(image, np.array([[6.0, 6.0, 3.0]]))
+    assert np.array_equal(image, before)
+
+
+def test_draw_circles_respects_the_image_contract():
+    from core.image_io import draw_circles
+
+    out = draw_circles(np.random.default_rng(0).random((16, 16, 3)), np.array([[8.0, 8.0, 4.0]]), color=(0.0, 1.0, 0.0))
+    assert out.dtype == np.float64
+    assert out.min() >= 0.0 and out.max() <= 1.0
+    assert np.all(out[8, 12] == [0.0, 1.0, 0.0])

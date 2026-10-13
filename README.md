@@ -14,6 +14,10 @@ Note : the blur (step 1) and gaussian magnitude (step 2) are actually made toget
 
 ![Harris corner detection pipeline](doc/harris_corner_detection_pipeline.png)  
 
+- **[core/blob_detection.py](core/blob_detection.py)**
+
+![Blobs detection pipeline](doc/blob_detection_pipeline.png)  
+
 ## Usage
 
 ```sh

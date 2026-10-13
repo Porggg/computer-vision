@@ -13,8 +13,12 @@ from core.filters import (
     derivative_of_gaussian_kernels,
     gaussian_kernel,
     gradient_magnitude,
+    harris_response,
+    hessian,
+    lowe_test,
     non_max_suppression_line,
     non_max_suppression_neighborhood,
+    non_max_suppression_neighborhood_3d,
     x_derivative,
     y_derivative,
     threshold,
@@ -548,3 +552,193 @@ def test_nms_neighborhood_keeps_the_shape_and_the_dtype():
     result = non_max_suppression_neighborhood(np.random.default_rng(0).random((17, 23)))
     assert result.shape == (17, 23)
     assert result.dtype == np.float64
+
+
+# --- non_max_suppression_neighborhood_3d ------------------------------------
+
+def _is_local_max_3d_brute_force(volume):
+    """The same question asked one voxel at a time, with plain loops."""
+    d, h, w = volume.shape
+    keep = np.zeros((d, h, w), dtype=bool)
+    for s in range(d):
+        for i in range(h):
+            for j in range(w):
+                window = volume[max(s - 1, 0):s + 2, max(i - 1, 0):i + 2, max(j - 1, 0):j + 2]
+                keep[s, i, j] = volume[s, i, j] == window.max()
+    return keep
+
+
+def test_nms_3d_matches_a_brute_force_loop():
+    volume = np.random.default_rng(0).random((5, 12, 15))
+    expected = volume * _is_local_max_3d_brute_force(volume)
+    assert np.allclose(non_max_suppression_neighborhood_3d(volume), expected)
+
+
+def test_nms_3d_keeps_a_peak_and_drops_its_neighbours():
+    volume = np.zeros((4, 7, 7))
+    volume[1:4, 2:5, 2:5] = 0.5
+    volume[2, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[2, 3, 3] == 1.0
+    assert np.count_nonzero(result) == 1
+
+
+def test_nms_3d_compares_the_neighbouring_scales():
+    # same pixel, one level apart: only the stronger scale survives
+    volume = np.zeros((4, 7, 7))
+    volume[1, 3, 3] = 0.8
+    volume[2, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[1, 3, 3] == 0.0 and result[2, 3, 3] == 1.0
+
+
+def test_nms_3d_compares_the_diagonals_across_scales_too():
+    # every one of the 26 neighbours counts, corners of the 3x3x3 cube included
+    volume = np.zeros((4, 7, 7))
+    volume[1, 2, 2] = 0.9
+    volume[2, 3, 3] = 1.0
+    assert non_max_suppression_neighborhood_3d(volume)[1, 2, 2] == 0.0
+
+
+def test_nms_3d_keeps_two_peaks_that_do_not_touch():
+    volume = np.zeros((4, 7, 7))
+    volume[1, 1, 1] = 0.9  # two pixels away from the other one
+    volume[2, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[1, 1, 1] == 0.9 and result[2, 3, 3] == 1.0
+
+
+def test_nms_3d_keeps_every_voxel_of_a_plateau():
+    # the test is ==, so two equal neighbours are both a maximum
+    volume = np.zeros((3, 3, 4))
+    volume[1, 1, 1:3] = 1.0
+    assert np.array_equal(non_max_suppression_neighborhood_3d(volume), volume)
+
+
+def test_nms_3d_can_keep_the_first_and_last_scales():
+    # the -inf padding never beats a real voxel, so the outer levels can win:
+    # blob_detection has to drop them, they have no neighbour on one side
+    volume = np.zeros((4, 7, 7))
+    volume[0, 3, 3] = 1.0
+    volume[3, 3, 3] = 1.0
+    result = non_max_suppression_neighborhood_3d(volume)
+    assert result[0, 3, 3] == 1.0 and result[3, 3, 3] == 1.0
+
+
+def test_nms_3d_ignores_minima():
+    # it only looks for maxima: a bright blob is a minimum of the DoG
+    volume = np.zeros((4, 7, 7))
+    volume[2, 3, 3] = -1.0
+    assert np.count_nonzero(non_max_suppression_neighborhood_3d(volume)) == 0
+
+
+def test_nms_3d_finds_a_bright_disc_on_the_negated_dog():
+    image = np.zeros((64, 64))
+    yy, xx = np.mgrid[:64, :64]
+    image[(yy - 32) ** 2 + (xx - 32) ** 2 <= 6**2] = 1.0
+    sigmas = [1.6 * np.sqrt(2) ** i for i in range(6)]
+    gaussians = np.stack([gaussian_blur(image, int(2 * np.ceil(3 * s) + 1), s) for s in sigmas])
+    dogs = gaussians[1:] - gaussians[:-1]
+
+    inner = non_max_suppression_neighborhood_3d(-dogs)[1:-1]
+    peaks = np.argwhere(inner > 0.01)
+
+    assert np.count_nonzero(non_max_suppression_neighborhood_3d(dogs)[1:-1] > 0.01) == 0
+    assert len(peaks) == 1
+    assert tuple(peaks[0][1:]) == (32, 32)
+
+
+def test_nms_3d_does_not_modify_its_input():
+    volume = np.random.default_rng(0).random((4, 8, 8))
+    before = volume.copy()
+    non_max_suppression_neighborhood_3d(volume)
+    assert np.array_equal(volume, before)
+
+
+def test_nms_3d_keeps_the_shape_and_the_dtype():
+    result = non_max_suppression_neighborhood_3d(np.random.default_rng(0).random((4, 17, 23)))
+    assert result.shape == (4, 17, 23)
+    assert result.dtype == np.float64
+
+
+# --- hessian / harris_response / lowe_test ----------------------------------
+
+def _quadratic(a, b, size=21):
+    """a x^2 + b y^2 around the center: its curvatures are a along x and b along y."""
+    yy, xx = np.mgrid[:size, :size] - size // 2
+    return a * xx.astype(np.float64) ** 2 + b * yy.astype(np.float64) ** 2
+
+
+def test_hessian_of_a_quadratic_is_constant_and_diagonal():
+    D_xx, D_yy, D_xy = hessian(_quadratic(3.0, 1.0))
+    inner = (slice(4, -4), slice(4, -4))  # away from the edge padding
+    assert np.allclose(D_xx[inner], D_xx[10, 10])
+    assert np.allclose(D_yy[inner], D_yy[10, 10])
+    assert np.allclose(D_xy[inner], 0.0)
+    assert D_xx[10, 10] == pytest.approx(3 * D_yy[10, 10])
+
+
+def test_hessian_has_the_true_sign_despite_the_d_x_convention():
+    # a bowl (minimum) curves up, so its second derivatives are positive
+    D_xx, D_yy, _ = hessian(_quadratic(1.0, 1.0))
+    assert D_xx[10, 10] > 0 and D_yy[10, 10] > 0
+
+
+def test_hessian_cross_term_follows_xy():
+    yy, xx = np.mgrid[:21, :21] - 10
+    _, _, D_xy = hessian((xx * yy).astype(np.float64))
+    assert D_xy[10, 10] > 0
+
+
+def test_harris_response_is_det_minus_k_trace_squared():
+    rng = np.random.default_rng(0)
+    a, b, c = rng.normal(size=(3, 5, 5))
+    det, trace = a * b - c**2, a + b
+    assert np.allclose(harris_response(a, b, c, 0.05), det - 0.05 * trace**2)
+
+
+def test_lowe_test_keeps_an_isotropic_bowl():
+    assert lowe_test(_quadratic(1.0, 1.0))[10, 10]
+
+
+def test_lowe_test_does_not_depend_on_the_polarity():
+    # H and -H have the same det and trace^2: bright and dark blobs are treated alike
+    assert lowe_test(_quadratic(-1.0, -1.0))[10, 10]
+
+
+@pytest.mark.parametrize("ratio, kept", [(2.0, True), (9.0, True), (11.0, False), (50.0, False)])
+def test_lowe_test_cuts_at_a_curvature_ratio_of_r(ratio, kept):
+    assert lowe_test(_quadratic(ratio, 1.0), r=10.0)[10, 10] == kept
+
+
+def test_lowe_test_r_moves_the_cut():
+    assert not lowe_test(_quadratic(5.0, 1.0), r=3.0)[10, 10]
+    assert lowe_test(_quadratic(5.0, 1.0), r=10.0)[10, 10]
+
+
+def test_lowe_test_rejects_a_saddle_point():
+    assert not lowe_test(_quadratic(1.0, -1.0))[10, 10]
+
+
+def test_lowe_test_rejects_a_straight_ridge():
+    # curved across, flat along: a pure edge response, det = 0
+    assert not lowe_test(_quadratic(1.0, 0.0))[10, 10]
+
+
+def test_lowe_test_rejects_a_flat_image():
+    assert not lowe_test(np.full((9, 9), 0.5)).any()
+
+
+def test_lowe_test_keeps_a_gaussian_blob_and_drops_a_line():
+    blob = gaussian_kernel(21, 3.0)
+    line = np.zeros((21, 21))
+    line[:, 10] = 1.0
+    line = gaussian_blur(line, 9, 1.5)
+    assert lowe_test(blob)[10, 10]
+    assert not lowe_test(line)[10, 10]
+
+
+def test_lowe_test_returns_a_boolean_mask_of_the_same_shape():
+    result = lowe_test(np.random.default_rng(0).random((17, 23)))
+    assert result.shape == (17, 23)
+    assert result.dtype == bool

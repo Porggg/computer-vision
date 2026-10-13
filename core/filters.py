@@ -20,6 +20,11 @@ def convolve_channels(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     channels = [convolve(image[:, :, c], kernel) for c in range(image.shape[2])]
     return np.stack(channels, axis=-1)
 
+### OPERATIONS
+
+def downsample(image: np.ndarray):
+    return image[::2, ::2]
+
 ### KERNELS 
 
 def gaussian_kernel(size: int = 5, sigma: float = 1.0) -> np.ndarray:
@@ -106,6 +111,27 @@ def derivative_of_gaussian(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     dog_x, dog_y = derivative_of_gaussian_kernels(9, 1.4)
     return convolve(gray, dog_x), convolve(gray, dog_y)
 
+def hessian(image: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Second derivatives (D_xx, D_yy, D_xy) of a grayscale image, with no extra blur.
+    The D_x sign flip happens twice, so it cancels."""
+    I_x, I_y = convolve(image, D_x), convolve(image, D_y)
+    return convolve(I_x, D_x), convolve(I_y, D_y), convolve(I_x, D_y)
+
+def harris_response(a: np.ndarray, b: np.ndarray, c: np.ndarray, k: float) -> np.ndarray:
+    """det - k * trace^2 of the symmetric matrix [[a, c], [c, b]], pixel by pixel.
+    Harris uses it on the structure tensor, the Lowe test on the hessian."""
+    return a * b - c**2 - k * (a + b) ** 2
+
+def lowe_test(image: np.ndarray, r: float = 10.0) -> np.ndarray:
+    """True where the image curves alike in every direction (a blob), False on
+    edges and saddle points.
+
+    Lowe keeps tr(H)^2 / det(H) < (r+1)^2 / r with det(H) > 0, r being the largest
+    allowed ratio
+    """
+    D_xx, D_yy, D_xy = hessian(image)
+    return harris_response(D_xx, D_yy, D_xy, r / (r + 1) ** 2) > 0
+
 def threshold(image: np.ndarray, level: float, mask: bool = False) -> np.ndarray:
     """Keep the values strictly above level, set the rest to 0.
        if mask is True : set the pixel to max intensity"""
@@ -153,3 +179,12 @@ def non_max_suppression_neighborhood(image):
     keep = local_max == image
 
     return keep * image
+
+def non_max_suppression_neighborhood_3d(volume, padding=-np.inf):
+    padded = np.pad(volume, 1, mode="constant", constant_values=padding)
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (3, 3, 3))
+
+    local_max = windows.max(axis=(-3, -2,-1))
+    keep = local_max == volume
+
+    return keep * volume
