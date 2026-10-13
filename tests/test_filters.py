@@ -13,6 +13,9 @@ from core.filters import (
     derivative_of_gaussian_kernels,
     gaussian_kernel,
     gradient_magnitude,
+    harris_response,
+    hessian,
+    lowe_test,
     non_max_suppression_line,
     non_max_suppression_neighborhood,
     non_max_suppression_neighborhood_3d,
@@ -656,3 +659,86 @@ def test_nms_3d_keeps_the_shape_and_the_dtype():
     result = non_max_suppression_neighborhood_3d(np.random.default_rng(0).random((4, 17, 23)))
     assert result.shape == (4, 17, 23)
     assert result.dtype == np.float64
+
+
+# --- hessian / harris_response / lowe_test ----------------------------------
+
+def _quadratic(a, b, size=21):
+    """a x^2 + b y^2 around the center: its curvatures are a along x and b along y."""
+    yy, xx = np.mgrid[:size, :size] - size // 2
+    return a * xx.astype(np.float64) ** 2 + b * yy.astype(np.float64) ** 2
+
+
+def test_hessian_of_a_quadratic_is_constant_and_diagonal():
+    D_xx, D_yy, D_xy = hessian(_quadratic(3.0, 1.0))
+    inner = (slice(4, -4), slice(4, -4))  # away from the edge padding
+    assert np.allclose(D_xx[inner], D_xx[10, 10])
+    assert np.allclose(D_yy[inner], D_yy[10, 10])
+    assert np.allclose(D_xy[inner], 0.0)
+    assert D_xx[10, 10] == pytest.approx(3 * D_yy[10, 10])
+
+
+def test_hessian_has_the_true_sign_despite_the_d_x_convention():
+    # a bowl (minimum) curves up, so its second derivatives are positive
+    D_xx, D_yy, _ = hessian(_quadratic(1.0, 1.0))
+    assert D_xx[10, 10] > 0 and D_yy[10, 10] > 0
+
+
+def test_hessian_cross_term_follows_xy():
+    yy, xx = np.mgrid[:21, :21] - 10
+    _, _, D_xy = hessian((xx * yy).astype(np.float64))
+    assert D_xy[10, 10] > 0
+
+
+def test_harris_response_is_det_minus_k_trace_squared():
+    rng = np.random.default_rng(0)
+    a, b, c = rng.normal(size=(3, 5, 5))
+    det, trace = a * b - c**2, a + b
+    assert np.allclose(harris_response(a, b, c, 0.05), det - 0.05 * trace**2)
+
+
+def test_lowe_test_keeps_an_isotropic_bowl():
+    assert lowe_test(_quadratic(1.0, 1.0))[10, 10]
+
+
+def test_lowe_test_does_not_depend_on_the_polarity():
+    # H and -H have the same det and trace^2: bright and dark blobs are treated alike
+    assert lowe_test(_quadratic(-1.0, -1.0))[10, 10]
+
+
+@pytest.mark.parametrize("ratio, kept", [(2.0, True), (9.0, True), (11.0, False), (50.0, False)])
+def test_lowe_test_cuts_at_a_curvature_ratio_of_r(ratio, kept):
+    assert lowe_test(_quadratic(ratio, 1.0), r=10.0)[10, 10] == kept
+
+
+def test_lowe_test_r_moves_the_cut():
+    assert not lowe_test(_quadratic(5.0, 1.0), r=3.0)[10, 10]
+    assert lowe_test(_quadratic(5.0, 1.0), r=10.0)[10, 10]
+
+
+def test_lowe_test_rejects_a_saddle_point():
+    assert not lowe_test(_quadratic(1.0, -1.0))[10, 10]
+
+
+def test_lowe_test_rejects_a_straight_ridge():
+    # curved across, flat along: a pure edge response, det = 0
+    assert not lowe_test(_quadratic(1.0, 0.0))[10, 10]
+
+
+def test_lowe_test_rejects_a_flat_image():
+    assert not lowe_test(np.full((9, 9), 0.5)).any()
+
+
+def test_lowe_test_keeps_a_gaussian_blob_and_drops_a_line():
+    blob = gaussian_kernel(21, 3.0)
+    line = np.zeros((21, 21))
+    line[:, 10] = 1.0
+    line = gaussian_blur(line, 9, 1.5)
+    assert lowe_test(blob)[10, 10]
+    assert not lowe_test(line)[10, 10]
+
+
+def test_lowe_test_returns_a_boolean_mask_of_the_same_shape():
+    result = lowe_test(np.random.default_rng(0).random((17, 23)))
+    assert result.shape == (17, 23)
+    assert result.dtype == bool

@@ -1,6 +1,6 @@
 import numpy as np
 
-from core.filters import gaussian_blur, to_grayscale, downsample, non_max_suppression_neighborhood_3d
+from core.filters import gaussian_blur, to_grayscale, downsample, lowe_test, non_max_suppression_neighborhood_3d
 from core.image_io import draw_circles
 
 def blob_detection(image: np.ndarray) -> np.ndarray:
@@ -30,6 +30,10 @@ def blob_detection(image: np.ndarray) -> np.ndarray:
         dogs = octaves[i][1:] - octaves[i][:-1]
         maxima = non_max_suppression_neighborhood_3d(np.abs(dogs), np.inf)
         coords = np.argwhere(maxima > 0.1 * maxima.max())  # columns (s, y, x)
+
+        # remove the edges: on the signed dogs, abs would put a crease at 0
+        blob_like = np.stack([lowe_test(level) for level in dogs])
+        coords = coords[blob_like[coords[:, 0], coords[:, 1], coords[:, 2]]]
 
         sigmas = sigma_stack[coords[:, 0]]
         possible_points.append(np.column_stack((coords[:, 2], coords[:, 1], sigmas)) * 2**i)
