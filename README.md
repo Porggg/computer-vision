@@ -18,6 +18,8 @@ Note : the blur (step 1) and gaussian magnitude (step 2) are actually made toget
 
 ![Blobs detection pipeline](doc/blob_detection_pipeline.png)  
 
+Note : Here the DoG is Difference of Gaussians (to approximate Laplacian of Gaussian)
+
 ## Usage
 
 ```sh
